@@ -130,7 +130,7 @@ class COCOEvaluator:
                     infer_end = time_synchronized()
                     inference_time += infer_end - start
 
-                if hasattr(model, "postrpocess"):
+                if hasattr(model, "postprocess"):
                     outputs = model.postprocess(
                         outputs,  num_classes=self.num_classes, **self.postprocess_cfg
                     )
@@ -186,18 +186,25 @@ class COCOEvaluator:
                     masks = masks[..., None]
                 masks = masks[: img_h, : img_w]
 
-            for ind in range(bboxes.shape[0]):
+            for ind in range(scores.shape[0]):
                 label = self.dataloader.dataset.class_ids[int(clses[ind])]
                 pred_data = {
                     "image_id": int(img_id),
                     "category_id": label,
-                    "bbox": bboxes[ind].tolist(),
+                    # "bbox": bboxes[ind].tolist(),
+                    "bbox": [],
                     "score": scores[ind].item(),
-                    "segmentation": [mask_utils.encode(
-                        np.array(masks[..., ind, None], order='F',     
-                        dtype=np.uint8))[0]
-                    ],
+                    "segmentation": [],
                 }  # COCO json format
+                if bboxes is not None:
+                    pred_data.update({"bbox":bboxes[ind].tolist()})
+                if masks is not None:
+                    seg = mask_utils.encode(
+                        np.array(masks[..., ind, None], order='F',
+                                    dtype=np.uint8))[0]
+                    if isinstance(seg["counts"], bytes):
+                        seg["counts"] = seg["counts"].decode()
+                    pred_data.update({"segmentation": seg})
                 data_list.append(pred_data)
         return data_list
 
@@ -245,7 +252,7 @@ class COCOEvaluator:
                 logger.warning("Use standard COCOeval.")
             eval_stat = {}
             for metric in self.metric:
-                logger.info(f"evaluating {metric}")
+                info += f"\n*************** Evaluating {metric} ****************\n"
                 cocoEval = COCOeval(cocoGt, cocoDt, metric)
                 cocoEval.evaluate()
                 cocoEval.accumulate()

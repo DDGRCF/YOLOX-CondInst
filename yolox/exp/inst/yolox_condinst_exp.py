@@ -82,6 +82,7 @@ class CondInstExp(Exp):
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
         # -----------------  testing config ------------------ #
+        self.metric=["bbox", "segm"]
         self.postprocess_cfg = dict(
             # for box out
             pre_nms_thre=0.45,
@@ -231,6 +232,7 @@ class CondInstExp(Exp):
             name="val2017" if not testdev else "test2017",
             img_size=self.test_size,
             preproc=ValTransform(legacy=legacy),
+            with_mask=self.with_mask
         )
 
         if is_distributed:
@@ -258,10 +260,10 @@ class CondInstExp(Exp):
         evaluator = COCOEvaluator(
             dataloader=val_loader,
             img_size=self.test_size,
-            confthre=self.test_conf,
-            nmsthre=self.nmsthre,
+            postprocess_cfg=self.postprocess_cfg,
             num_classes=self.num_classes,
             testdev=testdev,
+            metric=self.metric,
         )
         return evaluator
 

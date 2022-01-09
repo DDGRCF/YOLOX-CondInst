@@ -14,7 +14,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from yolox.core import launch
 from yolox.exp import get_exp
-from yolox.utils import configure_nccl, fuse_model, get_local_rank, get_model_info, setup_logger
+from yolox.utils import (DictAction, configure_nccl, fuse_model, get_local_rank, 
+                         get_model_info, setup_logger, merge_parsers)
 
 
 def make_parser():
@@ -50,9 +51,7 @@ def make_parser():
         help="pls input your expriment description file",
     )
     parser.add_argument("-c", "--ckpt", default=None, type=str, help="ckpt for eval")
-    parser.add_argument("--conf", default=None, type=float, help="test conf")
-    parser.add_argument("--nms", default=None, type=float, help="test nms threshold")
-    parser.add_argument("--tsize", default=None, type=int, help="test img size")
+    parser.add_argument("--test_size", default=640, type=int, help="test img size")
     parser.add_argument("--seed", default=None, type=int, help="eval seed")
     parser.add_argument(
         "--fp16",
@@ -96,11 +95,17 @@ def make_parser():
         action="store_true",
         help="speed test only.",
     )
+    # parser.add_argument(
+    #     "opts",
+    #     help="Modify config options using the command-line",
+    #     default=None,
+    #     nargs=argparse.REMAINDER,
+    # )
     parser.add_argument(
-        "opts",
-        help="Modify config options using the command-line",
-        default=None,
-        nargs=argparse.REMAINDER,
+        "--options",
+        nargs="+",
+        action=DictAction,
+        help="setting some uncertainty values"
     )
     return parser
 
@@ -130,13 +135,6 @@ def main(exp, args, num_gpu):
 
     setup_logger(file_name, distributed_rank=rank, filename="val_log.txt", mode="a")
     logger.info("Args: {}".format(args))
-
-    if args.conf is not None:
-        exp.test_conf = args.conf
-    if args.nms is not None:
-        exp.nmsthre = args.nms
-    if args.tsize is not None:
-        exp.test_size = (args.tsize, args.tsize)
 
     model = exp.get_model()
     logger.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
@@ -190,7 +188,8 @@ def main(exp, args, num_gpu):
 if __name__ == "__main__":
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
-    exp.merge(args.opts)
+    # exp.merge(args.opts)
+    merge_parsers(exp, args)
 
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
