@@ -427,6 +427,7 @@ class YOLOXHead(nn.Module):
         l1_target[:, :2] = gt[:, :2] / stride - xy_shifts
         l1_target[:, 2] = torch.log(gt[:, 2] / stride.squeeze(-1) + eps)
         l1_target[:, 3] = torch.log(gt[:, 3] / stride.squeeze(-1) + eps)
+
         return l1_target
 
     @torch.no_grad()
