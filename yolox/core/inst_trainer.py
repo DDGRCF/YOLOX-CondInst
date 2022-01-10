@@ -10,9 +10,11 @@ from .trainer import Trainer
 class InstTrainer(Trainer):
     def __init__(self, exp, args):
         super().__init__(exp, args)
-        self.save_metric = "segm"
-        # init function only defines some basic attr, other attrs like model, optimizer are built in
-        # before_train methods.
+        self.save_metric = exp.save_metric
+
+    def before_train(self):
+        super().before_train()
+        self.lr_scheduler.cur_lr = self.lr_scheduler.lr
 
     def train_one_iter(self):
         iter_start_time = time.time()
@@ -38,9 +40,12 @@ class InstTrainer(Trainer):
         if self.use_model_ema:
             self.ema_model.update(self.model)
 
+        # TODO; update learning rate
         lr = self.lr_scheduler.update_lr(self.progress_in_iter + 1)
+        adjust_rate = lr / self.lr_scheduler.cur_lr
+        self.lr_scheduler.cur_lr = lr
         for param_group in self.optimizer.param_groups:
-            param_group["lr"] = lr
+            param_group["lr"] = adjust_rate * param_group["lr"]
 
         iter_end_time = time.time()
         self.meter.update(

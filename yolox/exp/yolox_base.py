@@ -48,6 +48,7 @@ class Exp(BaseExp):
         self.mixup_scale = (0.5, 1.5)
         self.shear = 2.0
         self.enable_mixup = True
+        self.with_mask = False
 
         # --------------  training config --------------------- #
         self.trainer = Trainer
@@ -64,6 +65,8 @@ class Exp(BaseExp):
         self.momentum = 0.9
         self.print_interval = 10
         self.eval_interval = 10
+        self.no_validate = True
+        self.save_metric = "bbox"
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
         # -----------------  testing config ------------------ #
@@ -72,8 +75,7 @@ class Exp(BaseExp):
             conf_thre=0.01,    
             nms_thre=0.65
         )
-        # self.test_conf = 0.01
-        # self.nmsthre = 0.65
+        self.metric = ["bbox"]
 
     def get_model(self):
         from yolox.models import YOLOX, YOLOPAFPN, YOLOXHead
@@ -252,6 +254,7 @@ class Exp(BaseExp):
             name="val2017" if not testdev else "test2017",
             img_size=self.test_size,
             preproc=ValTransform(legacy=legacy),
+            with_mask = self.with_mask
         )
 
         if is_distributed:
@@ -284,6 +287,7 @@ class Exp(BaseExp):
             # nmsthre=self.nmsthre,
             num_classes=self.num_classes,
             testdev=testdev,
+            metric=self.metric,
         )
         return evaluator
 

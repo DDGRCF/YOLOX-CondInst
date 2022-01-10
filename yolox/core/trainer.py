@@ -317,9 +317,8 @@ class Trainer:
             logger.info("\n" + summary)
         synchronize()
 
-        self.save_ckpt("last_epoch", 
-                metric[self.save_metric][1] > self.best_ap)
-        self.best_ap = max(self.best_ap, metric[self.save_metric][1])
+        self.save_ckpt("last_epoch", eval_dict[self.save_metric][1] > self.best_ap)
+        self.best_ap = max(self.best_ap, eval_dict[self.save_metric][1])
 
     def save_ckpt(self, ckpt_name, update_best_ckpt=False):
         if self.rank == 0:

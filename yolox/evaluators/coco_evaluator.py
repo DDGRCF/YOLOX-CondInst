@@ -209,8 +209,9 @@ class COCOEvaluator:
         return data_list
 
     def evaluate_prediction(self, data_dict, statistics):
+        eval_stat = {m: [0, 0] for m in self.metric}
         if not is_main_process():
-            return 0, 0, None
+            return eval_stat, None
 
         logger.info("Evaluate in main process...")
 
@@ -250,7 +251,6 @@ class COCOEvaluator:
                 from pycocotools.cocoeval import COCOeval
 
                 logger.warning("Use standard COCOeval.")
-            eval_stat = {}
             for metric in self.metric:
                 info += f"\n*************** Evaluating {metric} ****************\n"
                 cocoEval = COCOeval(cocoGt, cocoDt, metric)
@@ -264,4 +264,4 @@ class COCOEvaluator:
 
             return eval_stat, info
         else:
-            return 0, 0, info
+            return eval_stat, info

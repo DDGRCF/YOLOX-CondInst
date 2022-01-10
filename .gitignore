@@ -4,6 +4,8 @@
 # user experiments directory
 /YOLOX_outputs/
 /datasets/*
+/exps/example/debug
+/my_exps/debug
 # temporary files which can be created if a process still has a handle open of a deleted file
 .fuse_hidden*
 # KDE directory preferences

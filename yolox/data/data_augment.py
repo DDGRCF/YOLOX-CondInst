@@ -195,9 +195,9 @@ class TrainTransform:
         if keep_inds is not None:
             masks = masks[..., keep_inds]
         if is_tolist:
-            return [masks[..., i].astype(np.uint8) for i in range(masks.shape[-1])]
+            return [masks[..., i] for i in range(masks.shape[-1])]
         else:
-            return masks.astype(np.uint8)
+            return masks
 
     def __call__(self, image, bbox_targets, input_dim, mask_targets=None):
         num_targets = len(bbox_targets)
@@ -207,7 +207,7 @@ class TrainTransform:
         if len(boxes) == 0:
             bbox_targets = np.zeros((self.max_labels, 5), dtype=np.float32)
             image = preproc(image, input_dim)[0]
-            mask_targets = np.zeros((input_dim[0], input_dim[1], 0), dtype=np.float32)
+            mask_targets = np.zeros((0, input_dim[0], input_dim[1]), dtype=np.float32)
             return image, bbox_targets, mask_targets
 
         image_o = image.copy()
@@ -264,7 +264,11 @@ class TrainTransform:
                 masks_t = masks_t[..., :self.max_labels]
 
         padded_labels = np.ascontiguousarray(padded_labels, dtype=np.float32)
-        return image_t.astype(np.uint8), padded_labels, masks_t.transpose(2, 0, 1) if self.with_mask else None
+
+        return (image_t, 
+                padded_labels, 
+                masks_t.transpose(2, 0, 1) \
+                    if self.with_mask else None)
 
 
 class ValTransform:

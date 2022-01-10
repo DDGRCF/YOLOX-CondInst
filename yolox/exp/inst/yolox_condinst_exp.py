@@ -3,15 +3,11 @@
 # Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
 
 import os
-
 import torch
-import torch.distributed as dist
 import torch.nn as nn
-import numpy as np
-
+import torch.distributed as dist
 from ..yolox_base import Exp
 from yolox.core import InstTrainer
-
 
 class CondInstExp(Exp):
     def __init__(self):
@@ -69,9 +65,9 @@ class CondInstExp(Exp):
         self.warmup_epochs = 0
         self.max_epoch = 24
         self.warmup_lr = 0
-        self.basic_lr_per_img = 0.005 / 64.0 # TODO: test 0.01 -> 0.005
+        self.basic_lr_per_img = 0.01 / 64.0
         self.scheduler = "yoloxwarmcos"
-        self.no_aug_epochs = 2
+        self.no_aug_epochs = 10
         self.min_lr_ratio = 0.05
         self.ema = True
 
@@ -79,13 +75,15 @@ class CondInstExp(Exp):
         self.momentum = 0.9
         self.print_interval = 10
         self.eval_interval = 10
+        self.no_validate = True
+        self.save_metric = "segm"
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
         # -----------------  testing config ------------------ #
         self.metric=["bbox", "segm"]
         self.postprocess_cfg = dict(
             # for box out
-            pre_nms_thre=0.45,
+            pre_nms_thre=0.65,
             pre_nms_topk=1000,
             post_nms_topk=100,
             # for mask out
@@ -129,7 +127,7 @@ class CondInstExp(Exp):
                                        box_head=box_head)
 
         self.model.apply(init_yolo)
-        self.model.box_head.initialize_biases(1e-2)
+        self.model.head.initialize_biases(1e-2)
         # self.model.mask_head.initialize_biases(1e-2)
         return self.model
 
@@ -211,61 +209,65 @@ class CondInstExp(Exp):
 
         return train_loader
 
-    def preprocess(self, inputs, targets, tsize):
-        scale_y = tsize[0] / self.input_size[0]
-        scale_x = tsize[1] / self.input_size[1]
-        if scale_x != 1 or scale_y != 1:
-            inputs = nn.functional.interpolate(
-                inputs, size=tsize, mode="bilinear", align_corners=False
+        
+    def get_optimizer(self, batch_size):
+        if "optimizer" not in self.__dict__:
+            if self.warmup_epochs > 0:
+                lr = self.warmup_lr
+            else:
+                lr = self.basic_lr_per_img * batch_size
+
+            pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
+            pg0_l, pg1_l, pg2_l = [] , [], []
+
+            for k, v in self.model.named_modules():
+                if "backbone" in k:
+                    if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
+                        pg2_l.append(v.bias)  # biases
+                        # v.bias.requires_grad = False
+                    if isinstance(v, nn.BatchNorm2d) or "bn" in k:
+                        pg0_l.append(v.weight)  # no decay
+                        # v.weight.requires_grad = False
+                    elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
+                        pg1_l.append(v.weight)  # apply decay
+                        # v.weight.requires_grad = False
+                elif "head" in k:
+                    if "controller_preds" not in k:
+                        if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
+                            pg2_l.append(v.bias)  # biases
+                        if isinstance(v, nn.BatchNorm2d) or "bn" in k:
+                            pg0_l.append(v.weight)  # no decay
+                        elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
+                            pg1_l.append(v.weight)  # apply decay
+                    else:
+                        if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
+                            pg2.append(v.bias)  # biases
+                        if isinstance(v, nn.BatchNorm2d) or "bn" in k:
+                            pg0.append(v.weight)  # no decay
+                        elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
+                            pg1.append(v.weight)  # apply decay
+                else:
+                    if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
+                        pg2.append(v.bias)  # biases
+                    if isinstance(v, nn.BatchNorm2d) or "bn" in k:
+                        pg0.append(v.weight)  # no decay
+                    elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
+                        pg1.append(v.weight)  # apply decay
+            # norm learning rate
+            optimizer = torch.optim.SGD(
+                pg0, lr=lr, momentum=self.momentum, nesterov=True
             )
-            targets[..., 1::2] = targets[..., 1::2] * scale_x
-            targets[..., 2::2] = targets[..., 2::2] * scale_y
-        return inputs, targets
+            optimizer.add_param_group(
+                {"params": pg1, "weight_decay": self.weight_decay},
+            )  # add pg1 with weight_decay
 
-
-    def get_eval_loader(self, batch_size, is_distributed, testdev=False, legacy=False):
-        from yolox.data import COCODataset, ValTransform
-
-        valdataset = COCODataset(
-            data_dir=self.data_dir,
-            json_file=self.val_ann if not testdev else "image_info_test-dev2017.json",
-            name="val2017" if not testdev else "test2017",
-            img_size=self.test_size,
-            preproc=ValTransform(legacy=legacy),
-            with_mask=self.with_mask
-        )
-
-        if is_distributed:
-            batch_size = batch_size // dist.get_world_size()
-            sampler = torch.utils.data.distributed.DistributedSampler(
-                valdataset, shuffle=False
+            optimizer.add_param_group({"params": pg2})
+            # low learning rate
+            optimizer.add_param_group(
+                {"params": pg1_l, "weight_decay": self.weight_decay, "lr": lr * 0.01},
             )
-        else:
-            sampler = torch.utils.data.SequentialSampler(valdataset)
+            optimizer.add_param_group({"params": pg0_l, "lr": lr * 0.01})
+            optimizer.add_param_group({"params": pg2_l, "lr": lr * 0.01})
+            self.optimizer = optimizer
 
-        dataloader_kwargs = {
-            "num_workers": self.data_num_workers,
-            "pin_memory": True,
-            "sampler": sampler,
-        }
-        dataloader_kwargs["batch_size"] = batch_size
-        val_loader = torch.utils.data.DataLoader(valdataset, **dataloader_kwargs)
-
-        return val_loader
-
-    def get_evaluator(self, batch_size, is_distributed, testdev=False, legacy=False):
-        from yolox.evaluators import COCOEvaluator
-
-        val_loader = self.get_eval_loader(batch_size, is_distributed, testdev, legacy)
-        evaluator = COCOEvaluator(
-            dataloader=val_loader,
-            img_size=self.test_size,
-            postprocess_cfg=self.postprocess_cfg,
-            num_classes=self.num_classes,
-            testdev=testdev,
-            metric=self.metric,
-        )
-        return evaluator
-
-    def eval(self, model, evaluator, is_distributed, half=False):
-        return evaluator.evaluate(model, is_distributed, half)
+        return self.optimizer

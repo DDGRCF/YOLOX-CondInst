@@ -78,13 +78,13 @@ class DynamicMaskHead(nn.Module):
 
         return weight_splits, bias_splits 
 
-    def mask_heads_forward(self, features, weights, biases, num_masks):
+    def mask_heads_forward(self, features, weights, biases, num_insts):
         n_layers = len(weights)
         x = features
         for i, (w, b) in enumerate(zip(weights, biases)):
             x = F.conv2d(x, w, bias=b, 
                          stride=1, padding=0,
-                         groups=num_masks)
+                         groups=num_insts)
             if i < n_layers - 1:
                 x = self.act(x)
         return x
@@ -167,7 +167,7 @@ class DynamicMaskHead(nn.Module):
         else:
             mask_logits = self.mask_heads_forward_with_coords(
                 mask_feats, mask_feat_stride, extra_infos
-            )
+            ).sigmoid()
             mask_logits = nn.functional.interpolate(
                 mask_logits, scale_factor=self.mask_stride_out,
                 mode="bilinear", align_corners=True
@@ -183,5 +183,5 @@ class DynamicMaskHead(nn.Module):
                 mask_logits_.append(mask_logits[id_mask])
                 bbox_preds_.append(bbox_preds[id_mask])
 
-            return torch.stack(bbox_preds_, dim=0), torch.stack(mask_logits_, dim=0).sigmoid()
+            return bbox_preds_, mask_logits_
             

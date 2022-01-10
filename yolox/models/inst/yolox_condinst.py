@@ -24,8 +24,6 @@ class YOLOXCondInst(YOLOX):
         if box_head is None:
             box_head = CondInstBoxHead(80)
 
-        self.backbone = backbone
-        self.box_head = box_head
         self.mask_head = mask_head
         self.mask_branch = mask_branch
 
@@ -61,7 +59,7 @@ class YOLOXCondInst(YOLOX):
                 score_output[i] = torch.cat((score_output[i], bbox[:, 4] * bbox[:, 5]))
                 cls_output[i] = torch.cat((cls_output[i], bbox[:, 6]))
 
-            return bbox_output, cls_output, score_output, mask_output
+        return bbox_output, cls_output, score_output, mask_output
 
     def forward(self, x, targets=None, t_masks=None):
         # fpn output content features of [dark3, dark4, dark5]
@@ -69,7 +67,7 @@ class YOLOXCondInst(YOLOX):
 
         if self.training:
             assert targets is not None
-            loss, extra_infos = self.box_head(
+            loss, extra_infos = self.head(
                 fpn_outs, targets, x
             )
             mask_feat = self.mask_branch(fpn_outs)
@@ -85,7 +83,7 @@ class YOLOXCondInst(YOLOX):
             loss.update(mask_loss)
             return loss
         else:
-            extra_infos = self.box_head(fpn_outs)
+            extra_infos = self.head(fpn_outs)
             mask_feat = self.mask_branch(fpn_outs)
             mask_outs, bbox_outs = self.mask_head(mask_feat,
                                        self.mask_branch.out_stride,

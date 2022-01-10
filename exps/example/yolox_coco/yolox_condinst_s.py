@@ -14,4 +14,4 @@ class Exp(MyExp):
         self.width = 0.50
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
         self.enable_mixup=True
-        self.no_validate = True
+        self.no_validate = False
