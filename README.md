@@ -4,6 +4,9 @@
 ***
 <img align=center>![demo_vis](./assets/tennis.jpg)
 ***
+#
+In order to facilitate script management, I have integrated the code into [YOLOX-OBB](https://github.com/DDGRCF/YOLOX_OBB)
+#
 ## **前言**
 1. 本项目是自己学习实例分割时，复现的代码. 通过自己编程，让自己对实例分割有更进一步的了解。
 若想与本人探讨有关深度学习的相关知识，欢迎通过邮件交流
